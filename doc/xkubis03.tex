@@ -1,0 +1,438 @@
+\documentclass[12pt,a4paper,titlepage,final]{article}
+
+% cestina a fonty
+\usepackage[czech]{babel}
+\usepackage[latin2]{inputenc}
+% balicky pro odkazy
+\usepackage[bookmarksopen,colorlinks,plainpages=false,urlcolor=blue,unicode]{hyperref}
+\usepackage{url}
+% obrazky
+\usepackage[dvipdf]{graphicx}
+% velikost stranky
+\usepackage[top=3.5cm, left=2.5cm, text={17cm, 24cm}, ignorefoot]{geometry}
+
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{program}
+\usepackage{bm}
+\usepackage{hhline}
+\usepackage{enumitem}
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% titulní strana
+
+% !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+\def\authorA{Radim Kubi¹, \url{xkubis03@stud.fit.vutbr.cz}}
+\def\projname{3. projekt\\Implementace algoritmu \\ Carry Look Ahead Parallel
+Binary Adder}
+% !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+\input{title.tex}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% obsah
+\pagestyle{plain}
+\pagenumbering{roman}
+\setcounter{page}{1}
+\tableofcontents
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% textova zprava
+\newpage
+\pagestyle{plain}
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Zadání} \label{zadani}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Pomocí knihovny \emph{Open\,MPI} implementujte algoritmus
+\emph{Carry\,Look\,Ahead\,Parallel\,Binary\,Adder}.
+
+%-----------------------------------------------------------------------------
+\subsection*{Vstup} \label{vstup}
+%-----------------------------------------------------------------------------
+
+Soubor \emph{numbers} obsahující 2~èísla, ka¾dé na~vlastním øádku. Èísla jsou
+uvedena v~binární soustavì tak, ¾e~MSB se~nachází vlevo. Ka¾dé èíslo je~uvedeno
+na~stejný poèet èíslic, tak¾e v~pøípadì potøeby je doplnìno úvodními nulami.
+Napø.:
+
+\begin{verbatim}
+0110
+1010
+\end{verbatim}
+
+%-----------------------------------------------------------------------------
+\subsection*{Výstup} \label{vystup}
+%-----------------------------------------------------------------------------
+
+Výstupem na~\emph{stdout} je~binární èíslo dané souètem èísel v~souboru
+\emph{numbers}. Výstup má~tolik øádkù, kolik je~bitù ve~sèítaných èíslech. Ka¾dý
+øádek bude ve~formátu ,,ID\_procesoru:bit'' a~pøípadné pøeteèení se~signalizuje
+klíèovým slovem \emph{overflow} na~dal¹ím øádku. Napø.:
+
+\begin{verbatim}
+overflow
+3:0
+5:0
+4:0
+6:0
+\end{verbatim}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Popis algoritmu} \label{popis}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Paralelní sèítaèka \emph{Carry Look Ahead Parallel Binary Adder} je~schopna
+seèíst dvì n-bitová binární èísla
+\begin{equation}
+X = x_{n-1} \dots x_{0}
+\end{equation}
+a
+\begin{equation}
+Y = y_{n-1} \dots y_{0}
+\end{equation}
+do~n-bitového binárního výsledku
+\begin{equation}
+Z = z_{n-1} \dots z_{0} = X + Y
+\end{equation}
+bìhem $log(n)$ krokù. Této rychlosti docílíme tak, ¾e~si~pøed samotným sèítáním
+binárních èísel pøedpoèítáme pøenosové (\emph{carry}) bity
+$c_{n-1} \dots c_{0}$, abychom mohli pøímo spoèítat
+\begin{equation}
+z_{i} = x_{i} + y_{i} + c_{i}, \:\mathrm{pro}\:i=0, 1, \dots, n-1\mathrm{.}
+\label{soucet}
+\end{equation}
+\newpage
+
+Algoritmus souètu dvou binárních èísel probíhá ve~tøech krocích:
+
+\begin{enumerate}
+\item Ka¾dý z~procesorù si~zjistí hodnotu $d_{i}\in\{s, p, g\}$, na~základì
+hodnot $x_{i}$ a~$y_{i}$, podle tabulky~\ref{tabulkadi}, kde:
+
+\begin{itemize}
+\item $s = \underline{s}top$ -- pøenos nenastane,
+\item $p = \underline{p}ropagate$ -- pøenos mù¾e nastat,
+\item $g = \underline{g}enerate$ -- pøenos nastane.
+\end{itemize}
+
+\item Vypoèítá se~\emph{suma prefixù $\odot$-scan} (tabulka~\ref{tabulkaspg})
+pole $D = d_{n-1} \dots d_{0}$, èím¾ v¹echny procesory získají nové hodnoty
+$d_{i}$, ze~kterých urèí výsledné pøenosové (\emph{carry}) bity $c_{i}$ podle
+tabulky~\ref{tabulkaci}.
+
+\item Procesory vypoèítají své hodnoty $z_{i}$ vztahem \ref{soucet}.
+\end{enumerate}
+
+\begin{table}[H]
+\catcode`\-=12
+\centering
+\begin{tabular}{|c|c||c|}
+\hline
+$\bm{x_{i}}$ & $\bm{y_{i}}$ & $\bm{d_{i}}$ \\
+\hhline{|=|=#=|}
+0 & 0 & $s$ \\
+\hline
+0 & 1 & $p$ \\
+\hline
+1 & 0 & $p$ \\
+\hline
+1 & 1 & $g$ \\
+\hline
+\end{tabular}
+\caption{Závislost hodnoty $d_{i}$ na hodnotách $x_{i}$ a $y_{i}$.}
+\label{tabulkadi}
+\end{table}
+
+\begin{table}[H]
+\catcode`\-=12
+\centering
+\begin{tabular}{|c||c|c|c|}
+\hline
+$\bm{\odot}$ & $\bm{s}$ & $\bm{p}$ & $\bm{g}$ \\
+\hhline{|=#=|=|=|}
+$\bm{s}$ & $s$ & $s$ & $s$ \\
+\hline
+$\bm{p}$ & $s$ & $p$ & $g$ \\
+\hline
+$\bm{g}$ & $g$ & $g$ & $g$ \\
+\hline
+\end{tabular}
+\caption{Tabulka asociativní operace $\odot$, $p$ je~neutrální prvek.}
+\label{tabulkaspg}
+\end{table}
+
+\begin{table}[H]
+\catcode`\-=12
+\centering
+\begin{tabular}{|c||c|}
+\hline
+$\bm{d_{i}}$ & $\bm{c_{i}}$ \\
+\hhline{|=#=|}
+$s$ & 0 \\
+\hline
+$p$ & 0 \\
+\hline
+$g$ & 1 \\
+\hline
+\end{tabular}
+\caption{Závislost hodnoty pøenosového bitu $c_{i}$ na hodnotì $d_{i}$.}
+\label{tabulkaci}
+\end{table}
+
+\newpage
+
+%-------------------------------------------------------------------------------
+\subsection{Suma prefixù $\odot$-scan}\label{scan}
+%-------------------------------------------------------------------------------
+
+Sèítaèka\,\emph{Carry\,Look\,Ahead\,Parallel\,Binary\,Adder}\,obsahuje\,operaci
+\emph{sumy\,prefixù\,$\odot$-scan} se~dvìma kroky (obrázek \ref{sweeps}), kterou
+bylo potøeba upravit pro~sèítání èísel v~binární podobì následovnì:
+
+\begin{enumerate}
+\item \emph{UpSweep algoritmus:}
+
+\begin{enumerate}[label=\alph*)]
+\item Vypoèítá se~hodnota $reduce(d_{0} \odot d_{1} \dots d_{n-1})$ stromem
+procesorù v~\emph{log(n)} krocích,
+\item ka¾dý z~uzlù si~pamatuje mezisouèet.
+\end{enumerate}
+
+\item \emph{DownSweep algoritmus:}
+
+\begin{enumerate}[label=\alph*)]
+\item Koøenovému uzlu stromu se~pøiøadí jako $d_{i}$ neutrální prvek $p$,
+\item provede se~\emph{log(n)} krokù (ka¾dá úroveò stromu jednou), poèínaje
+koøenem, smìrem k~listùm, a~v~ka¾dém kroku procesory na~stejné úrovni pracují
+paralelnì,
+\item ka¾dý uzel stromu procesorù pøedá svému:
+
+\begin{itemize}
+\item pravému synovskému uzlu svoji hodnotu $d_{i}$,
+\item levému synovskému uzlu hodnotu
+($d_{i}$ pravého synovského uzlu $\odot$ svého $d_{i}$).
+\end{itemize}
+\end{enumerate}
+
+\end{enumerate}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[scale=0.35]{img/sweeps.eps}
+\caption{Algoritmy \emph{UpSweep} (vlevo) a~\emph{DownSweep} (vpravo).}
+\label{sweeps}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Analýza algoritmu} \label{analyza}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Souhrnnou èasovou slo¾itost algoritmu \emph{Carry Look Ahead Parallel Binary
+Adder} tvoøí souèet dílèích èasových slo¾itostí jeho jednotlivých krokù.
+Slo¾itosti tìchto krokù jsou uvedeny v~tabulce~\ref{tabulkaSlozitost}.
+
+\begin{table}[H]
+\catcode`\-=12
+\centering
+\begin{tabular}{|c|c|c|}
+\hline
+{\bf Èíslo kroku} & {\bf Popis} & {\bf Slo¾itost} \\
+\hline
+1 & Zji¹tìní hodnoty  $d_{i}$ je~v~konstantním èase. & $O(1)$ \\
+\hline
+{\multirow{2}{*}{2}} & Výpoèet \emph{sumy prefixù $\odot$-scan} & {\multirow{2}{*}{$O(log(n))$}} \\
+
+ & má logaritmickou èasovou slo¾itost. & \\
+\hline
+3 & Výpoèet $z_{i}$ trvá konstantní dobu. & $O(1)$ \\
+\hline
+\end{tabular}
+\caption{Analýza èasové slo¾itosti jednotlivých krokù algoritmu.}
+\label{tabulkaSlozitost}
+\end{table}
+
+\newpage
+
+Výsledná èasová slo¾itost celého algoritmu je:
+
+\begin{equation}
+t(n) = O(log(n)).
+\end{equation}
+
+Algoritmus potøebuje pro svùj bìh $((2 \cdot n) - 1)$ procesorù:
+
+\begin{equation}
+p(n) = n.
+\end{equation}
+
+Celková cena algoritmu se~získá vztahem:
+
+\begin{equation}
+c(n) = p(n) \cdot t(n),
+\end{equation}
+
+tedy pro algoritmus \emph{Carry Look Ahead Parallel Binary Adder} je celková
+cena algoritmu:
+
+\begin{equation}
+c(n) = n \cdot O(log(n)) = O(n \cdot log(n)).
+\end{equation}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Implementace} \label{implementace}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Projekt s~implementací algoritmu \emph{Carry Look Ahead Parallel Binary Adder}
+je~napsán v~jazyce~C za~pomoci knihovny \emph{Open MPI} pro~podporu paralelního
+øe¹ení výpoèetních problémù.
+
+Procesory jsou propojeny do~binární stromové struktury, k~vzájemné komunikaci
+vyu¾ívají pouze funkce \texttt{MPI\_Send} a~\texttt{MPI\_Recv}. Jedním
+z~parametrù tìchto funkcí je i~tag, podle kterého lze urèit, jaká hodnota
+je~zasílána/pøijímána. Pro~distribuci hodnot $x_{i}$ a~$y_{i}$ slou¾í tagy
+\texttt{TAGX} a~\texttt{TAGY}, výmìna hodnot $d_{i}$ probíhá s~tagem
+\texttt{TAGD}.
+
+Komunikaèní protokol mezi procesory je znároznìn sekvenèním diagramem
+\ref{sekvence}.
+
+\begin{figure}[htp]
+\centering
+\includegraphics[scale=0.35]{img/sequence.eps}
+\caption{Sekvenèní diagram komunikaèního protokolu mezi procesory.}
+\label{sekvence}
+\end{figure}
+
+\subsection{Úprava algoritmu}
+
+Druhý\,krok \emph{DownSweep} klasického\,algoritmu
+\emph{sumy\,prefixù\,$\odot$-scan} poèítá s~umístìním nejvy¹¹ího souètu prefixù
+v~posledním (nejpravìj¹ím) listovém uzlu stromu procesorù. Sèítání binárních
+èísel v¹ak potøebuje umístit nejvy¹¹í souèet prefixù do~prvního (nejlevìj¹ího)
+listového uzlu tohoto stromu, proto¾e \emph{nejvýznamnìj¹í bit} (MSB,
+z~anglického \emph{Most Significant Bit}) binárního èísla je~umístìn právì úplnì
+vlevo.
+
+Pùvodní \emph{DownSweep algoritmus}:
+
+\begin{enumerate}[label=\alph*)]
+\item Koøenovému uzlu stromu se~pøiøadí jako $d_{i}$ neutrální prvek $p$,
+\item provede se~\emph{log(n)} krokù (ka¾dá\,úroveò\,stromu\,jednou), poèínaje
+koøenem, smìrem k~listùm, a~v~ka¾dém kroku procesory na~stejné úrovni pracují
+paralelnì,
+\item ka¾dý uzel stromu procesorù pøedá svému:
+
+\begin{itemize}
+\item \underline{levému} synovskému uzlu svoji hodnotu $d_{i}$,
+\item \underline{pravému} synovskému uzlu hodnotu
+($d_{i}$ \underline{levého} synovského uzlu $\odot$ svého $d_{i}$).
+\end{itemize}
+\end{enumerate}
+
+Upravený algoritmus (\ref{scan}) se~li¹í v~zámìnì stran levá/pravá (podtr¾eno).
+
+\newpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Testování a~výsledky} \label{testovani}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Mìøení doby trvání algoritmu bylo provádìno funkcí \texttt{clock\_gettime}
+(z~knihovny \texttt{time.h}) s~identifikací hodin
+\texttt{CLOCK\_MONOTONIC\_RAW}. Funkce vrací monotónní èas od~blí¾e neurèeného
+výchozího bodu.
+
+První èasová znaèka je~ukládána po rozeslání v¹ech hodnot $X_{i}$ a~$Y_{i}$
+jednotlivým listovým procesorùm. Druhá èasová znaèka se~ukládá po~výpoètu v¹ech
+bitù výsledku souètu. Výsledný èas délky trvání algoritmu je~rozdíl tìchto dvou
+èasových okam¾ikù. 
+
+Pro rùznì dlouhá vstupní binární èísla (1, 2, 4 a 8 bitù) bylo mìøení opakováno
+v¾dy 100krát. Doba souètu ka¾dé bitové délky vstupních èísel je~pak~vypoèítána
+jako minimum, modus, medián a~aritmetický prùmìr v¹ech zmìøených èasù.
+
+Vypoèítané hodnoty jsou uvedeny v~tabulce~\ref{tabulkaTest} a~vyneseny
+do~grafù~\ref{minimum}, \ref{modus}, \ref{median} a~\ref{prumer}. Porovnání
+jednotlivých hodnot lze vidìt v~grafu \ref{four} (kvùli velkému rozdílu
+byly vynechány hodnoty pro~délku 8~bitù).
+
+\begin{table}[H]
+\catcode`\-=12
+\centering
+\begin{tabular}{|c|rr@{,}l|r@{,}l|r@{,}l|r@{,}l|}
+\hline
+{\bf Délka èísel} & \multicolumn{9}{|c|}{\bf Doba souètu [$\bm{\mu}s$]} \\
+\hhline{|~|-|-|-|-|-|-|-|-|-|}
+{\bf [bit]} & \multicolumn{3}{|c|}{\bf Minimum} & \multicolumn{2}{|c|}{\bf Modus} & \multicolumn{2}{|c|}{\bf Medián} & \multicolumn{2}{|c|}{\bf Prùmìr} \\
+\hline
+1 && 3&073 & 3&352 & 3&422 & 3&628 \\
+\hline
+2 && 14&597 & 26&819 & 25&912 & 23&883 \\
+\hline
+4 && 32&057 & 45&327 & 49&832 & 77&878 \\
+\hline
+8 && 99&314 & 183&822 & 1311&200 & 2957&837 \\
+\hline
+\end{tabular}
+\caption{Vypoèítané hodnoty dob souètu vstupních èísel rùzných bitových délek.}
+\label{tabulkaTest}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.8]{img/minimum.eps}
+\caption{Minimální doba souètu èísel.}
+\label{minimum}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.8]{img/modus.eps}
+\caption{Modus doby souètu èísel.}
+\label{modus}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.8]{img/median.eps}
+\caption{Medián doby souètu èísel.}
+\label{median}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.8]{img/prumer.eps}
+\caption{Aritmetický prùmìr doby souètu èísel.}
+\label{prumer}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[scale=0.75]{img/four.eps}
+\caption{Porovnání doby souètu pro 1, 2 a 4 bity.}
+\label{four}
+\end{figure}
+
+Ze~zobrazených grafù je~zøejmé, ¾e~se~na~testovacím výpoèetním systému
+a~s~vý¹e uvedenou implementací \textbf{nepodaøilo} dosáhnout teoretické èasové
+slo¾itosti \emph{O(log(n))} algoritmu \emph{Carry Look Ahead Parallel Binary
+Adder}. Toto mù¾e být zpùsobeno pou¾itím blokujících komunikaèních funkcí
+\texttt{MPI\_Send} a~\texttt{MPI\_Recv} mezi jednotlivými procesory. Dále mù¾e
+být problémem zvolený zpùsob mìøení doby souètu, kdy je poèítán rozdíl reálných
+èasových okam¾ikù namísto skuteèného èasu spotøebovaného procesorem výpoèetního
+systému pøi provádìní algoritmu.
+
+Doby souètu pro délky 1, 2 a~4~bity vstupních èísel se~\emph{témìr} blí¾í
+logaritmickému prùbìhu. Rozdíly pøi délce 8~bitù vstupních èísel se~v¹ak
+od~oèekávaného prùbìhu velice li¹í. Vìt¹í bitové délky bohu¾el nebylo mo¾né
+testovat.
+
+\end{document}
